@@ -147,7 +147,7 @@ int main (int argc, char *argv[]) {
     }
     printf("Requested %d buffers for video capture.\n", buf_cnt);
 
-    /* Queue all buffers to free linked list. */
+    /* Queue all buffers to empty linked list. */
     for (i = 0; i < buf_cnt; i++) {
         struct v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));

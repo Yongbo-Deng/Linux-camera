@@ -13,12 +13,15 @@
 
 #define NB_BUFFER 4
 
+static int V4l2GetFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
+static int V4l2PutFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
+
+static T_VideoOpr g_tV4l2VideoOpr;
+
 static int g_aiSupportedFromats[] = {
     V4L2_PIX_FMT_YUYV,
     V4L2_PIX_FMT_MJPEG,
-    V4L2_PIX_FMT_RGB565,
-    V4L2_PIX_FMT_RGB24,
-    V4L2_PIX_FMT_RGB32
+    V4L2_PIX_FMT_RGB565
 };
 
 static int isSupportedFormat(int iFormat) {
@@ -163,6 +166,8 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
             }
         }
     } else if (tV4l2Cap.capabilities & V4L2_CAP_READWRITE) {
+        g_tV4l2VideoOpr.GetFrame = V4l2GetFrameForReadWrite;
+        g_tV4l2VideoOpr.PutFrame = V4l2PutFrameForReadWrite;
         /* For read/write, we don't need to mmap buffers */
         ptVideoDevice->ivideoBufCnt = 1;
         ptVideoDevice->iVideoBufMaxLen = ptVideoDevice->iWidth * ptVideoDevice->iHeight * 4; // Assuming RGB32 format
@@ -200,9 +205,84 @@ static int V4l2ExitDevice (PT_VideoDevice ptVideoDevice) {
     close(ptVideoDevice->iFd);
 }
 
-static int V4l2GetFrame (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
+static int V4l2GetFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
+    struct pollfd fds[1];
+    struct v4l2_buffer tV4l2Buf;
+    int iRet;
 
-static int V4l2PutFrame (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
+    /* Poll */
+    fds[0].fd = ptVideoDevice->iFd;
+    fds[0].events = POLLIN;
+
+    iRet = poll(fds, 1, -1); // Wait indefinitely
+    if (iRet <= 0) {
+        DBG_PRINTF("Poll failed.\n");
+        return -1;
+    }
+
+    /* VIDIOC_DQBUF */
+    memset(&tV4l2Buf, 0, sizeof(tV4l2Buf));
+    tV4l2Buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    tV4l2Buf.memory = V4L2_MEMORY_MMAP;
+    iRet = ioctl(ptVideoDevice->iFd, VIDIOC_DQBUF, &tV4l2Buf);
+    if (iRet < 0) {
+        DBG_PRINTF("Unable to dequeue buffer.\n");
+        return -1;
+    }
+    ptVideoDevice->tVideoBufCurIndex = tV4l2Buf.index;
+
+    ptVideoBuf->iPixelFormat        = ptVideoDevice->iPixelFormat;
+    ptVideoBuf->tPixelDatas.iWidth  = ptVideoDevice->iWidth;
+    ptVideoBuf->tPixelDatas.iHeight = ptVideoDevice->iHeight;
+    ptVideoBuf->tPixelDatas.iBpp    =  (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_YUYV) ? 16 :  \
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_MJPEG) ? 0 : \
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16;
+    ptVideoBuf->tPixelDatas.iLineByte       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
+    ptVideoBuf->tPixelDatas.iTotalByte      = tV4l2Buf->bytesused;
+    ptVideoBuf->tPixelDatas.aucPixelDatas   = ptVideoDevice->pucVideoBufs[tV4l2Buf.index];
+
+    return 0;
+}
+
+static int V4l2PutFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
+    struct v4l2_buffer tV4l2Buf;
+    int iError;
+
+    /* Prepare buffer for queue */
+    memset(&tV4l2Buf, 0, sizeof(tV4l2Buf));
+    tV4l2Buf.index = ptVideoDevice->tVideoBufCurIndex;
+    tV4l2Buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    tV4l2Buf.memory = V4L2_MEMORY_MMAP;
+
+    iError = ioctl(ptVideoDevice->iFd, VIDIOC_QBUF, &tV4l2Buf);
+    if (iError) {
+        DBG_PRINTF("Unable to queue buffer.\n");
+        return -1;  
+    }
+}
+
+static int V4l2GetFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
+    int iRet;
+
+    iRet = read(ptVideoDevice->iFd, ptVideoDevice.pucVideoBuf[0], ptVideoDevice->iVideoBufMaxLen);
+    if (iRet <= 0) {
+        DBG_PRINTF("Failed to read from video device.\n");
+        return -1;
+    }
+    
+    ptVideoBuf->iPixelFormat        = ptVideoDevice->iPixelFormat;
+    ptVideoBuf->tPixelDatas.iWidth  = ptVideoDevice->iWidth;
+    ptVideoBuf->tPixelDatas.iHeight = ptVideoDevice->iHeight;
+    ptVideoBuf->tPixelDatas.iBpp    =  (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_YUYV) ? 16 :  \
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_MJPEG) ? 0 : \
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16;
+    ptVideoBuf->tPixelDatas.iLineByte       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
+    ptVideoBuf->tPixelDatas.iTotalByte      = iRet;
+    ptVideoBuf->tPixelDatas.aucPixelDatas   = ptVideoDevice->pucVideoBufs[0];
+
+}
+
+static int V4l2PutFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
 
 static int V4l2StartDevice (PT_VideoDevice ptVideoDevice) {
     int iType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -235,8 +315,8 @@ static T_VideoOpr g_tV4l2VideoOpr = {
     .name           = "v4l2",
     .InitDevice     = V4l2InitDevice,
     .ExitDevice     = V4l2ExitDevice,
-    .GetFrame       = V4l2GetFrame,   
-    .PutFrame       = V4l2PutFrame,
+    .GetFrame       = V4l2GetFrameForStreaming,
+    .PutFrame       = V4l2PutFrameForStreaming,
     .StartDevice    = V4l2StartDevice,
     .StopDevice     = V4l2StopDevice,
 };

@@ -21,6 +21,7 @@ typedef struct VideoDevice {
 
     int iVideoBufCnt;
     int iVideoBufMaxLen;
+    int iVideoBufCurIndex;  
     unsigned char *pucVideoBufs[NB_BUFFER];
 
     /* Functions */

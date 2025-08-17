@@ -91,7 +91,7 @@ static int Pyuv422toRgb32 (unsigned char *input_ptr, unsigned char *output_ptr, 
     return 0;
 }
 
-int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
+static int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
     PT_PixelDatas ptPixelDatasIn = &ptVideoBufIn->tPixelDatas;
     PT_PixelDatas ptPixelDatasOut = &ptVideoBufOut->tPixelDatas;
 
@@ -123,7 +123,8 @@ int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
 
     return -1; // Unsupported output format
 }
-int (Yuv2RgbConvertExit)(PT_VideoBuf ptVideoBufOut) {
+
+static int (Yuv2RgbConvertExit)(PT_VideoBuf ptVideoBufOut) {
     if (ptVideoBufOut->tPixelDatas.aucPixelDatas) {
         free(ptVideoBufOut->tPixelDatas.aucPixelDatas);
         ptVideoBufOut->tPixelDatas.aucPixelDatas = NULL;

@@ -53,7 +53,7 @@ int VideoDeviceInit(char *strDevName, PT_VideoDevice ptVideoDevice) {
 	while (ptTmp) {
         iError = ptTmp->InitDevice(strDevName, ptVideoDevice);
         if (!iError) {
-            return 0;
+            return 0; // Only inittialized once.
         }
 		ptTmp = ptTmp->ptNext;
 	}

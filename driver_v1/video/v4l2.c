@@ -188,6 +188,7 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
     }
 
     return 0;
+
 err_exit:
     close(iFd);
     return -1;
@@ -242,6 +243,10 @@ static int V4l2GetFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
     ptVideoBuf->tPixelDatas.aucPixelDatas   = ptVideoDevice->pucVideoBufs[tV4l2Buf.index];
 
     return 0;
+}
+
+static int V4l2GetFormat (PT_VideoDevice ptVideoDevice) {
+    return ptVideoDevice->iPixelFormat;
 }
 
 static int V4l2PutFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
@@ -316,6 +321,7 @@ static T_VideoOpr g_tV4l2VideoOpr = {
     .InitDevice     = V4l2InitDevice,
     .ExitDevice     = V4l2ExitDevice,
     .GetFrame       = V4l2GetFrameForStreaming,
+    .GetFormat      = V4l2GetFormat,
     .PutFrame       = V4l2PutFrameForStreaming,
     .StartDevice    = V4l2StartDevice,
     .StopDevice     = V4l2StopDevice,

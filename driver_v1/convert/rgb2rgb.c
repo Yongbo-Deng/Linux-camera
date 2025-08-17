@@ -1,6 +1,7 @@
 
 #include <convert_manager.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int isSupportRgb2Rgb(int iPixelFormatIn, int iPixelFormatOut) {
     if (iPixelFormatIn != V4L2_PIX_FMT_RGB565) {
@@ -20,36 +21,36 @@ static int Rgb2RgbConvert(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
     int x;
     int r, g, b;
     int color;
-    unsigned short *pwSrc = ptPixelDatasIn->aucPixelDatas;
-    unsigned int *pwDst = ptPixelDatasOut->aucPixelDatas;
+    unsigned short *pwSrc = (unsigned short *)ptPixelDatasIn->aucPixelDatas;
+    unsigned int *pwDst = (unsigned int *)ptPixelDatasOut->aucPixelDatas;
 
     if (ptVideoBufOut->iPixelFormat == V4L2_PIX_FMT_RGB565) {
         // No conversion needed, just copy the data
         ptPixelDatasOut->iWidth = ptPixelDatasIn->iWidth;
         ptPixelDatasOut->iHeight = ptPixelDatasIn->iHeight;
         ptPixelDatasOut->iBpp = 16;
-        ptPixelDatasOut->LineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
-        ptPixelDatasOut->totalBytes = ptPixelDatasOut->LineBytes * ptPixelDatasOut->iHeight;
+        ptPixelDatasOut->iLineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
+        ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
 
         if (!ptPixelDatasOut->aucPixelDatas) {
-            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDarasOut->totalBytes);
+            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDatasOut->iTotalBytes);
         }
 
-        memcpy(ptPixelDatasOut->aucPixelDatas, ptPixelDatasIn->aucPixelDatas, ptPixelDarasOut->totalBytes);
+        memcpy(ptPixelDatasOut->aucPixelDatas, ptPixelDatasIn->aucPixelDatas, ptPixelDatasOut->iTotalBytes);
     } else {
         // Conversion logic for
         ptPixelDatasOut->iWidth = ptPixelDatasIn->iWidth;
         ptPixelDatasOut->iHeight = ptPixelDatasIn->iHeight;
         ptPixelDatasOut->iBpp = 32;
-        ptPixelDatasOut->LineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
-        ptPixelDatasOut->totalBytes = ptPixelDatasOut->LineBytes * ptPixelDatasOut->iHeight;
+        ptPixelDatasOut->iLineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
+        ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
 
         if (!ptPixelDatasOut->aucPixelDatas) {
-            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDarasOut->totalBytes);
+            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDatasOut->iTotalBytes);
         }
 
-        for (y = 0; y < ptPixelDatasOut.iHeight; y++) {
-            for (x = 0; x < ptPixelDatasOut.iWidth; x++) {
+        for (y = 0; y < ptPixelDatasOut->iHeight; y++) {
+            for (x = 0; x < ptPixelDatasOut->iWidth; x++) {
                 color = *pwSrc++;
                 r = (color >> 11) & 0x1F; 
                 g = (color >> 5) & 0x3F;  

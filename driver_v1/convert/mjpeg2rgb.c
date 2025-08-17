@@ -1,7 +1,16 @@
 
 #include <convert_manager.h>
+#include <stdlib.h>
+#include <string.h>
+#include <setjmp.h>
+#include <jpeglib.h>
 
-extern void jpeg_mem_src_tj(struct jpeg_decompress_struct *cinfo, unsigned char *buffer, unsigned long size);
+extern void jpeg_mem_src_tj(j_decompress_ptr, unsigned char *, unsigned long);
+
+typedef struct MyErrorMgr {
+    struct jpeg_error_mgr pub;
+    jmp_buf setjmp_buffer;
+} T_MyErrorMgr, *PT_MyErrorMgr;
 
 static int isSupportMjpeg2Rgb(int iPixelFormatIn, int iPixelFormatOut) {
     if (iPixelFormatIn != V4L2_PIX_FMT_MJPEG) {
@@ -13,18 +22,23 @@ static int isSupportMjpeg2Rgb(int iPixelFormatIn, int iPixelFormatOut) {
     return 1; // Supported
 }
 
-static void MyErrorExit(j_common_ptr cinfo) {
-    // Custom error handling logic
+static void MyErrorExit(j_common_ptr ptCinfo) {
+    static char errStr[JMSG_LENGTH_MAX];
+
+    PT_MyErrorMgr ptMyErr = (PT_MyErrorMgr)ptCinfo->err;
+    DBG_PRINTF("%s\n", errStr);
+
+    longjmp(ptMyErr->setjmp_buffer, 1);
 }
 
-static int CovertOneLine(int iWidth, int iBpp, unsigned char *input_ptr, unsigned char *output_ptr) {
+static int CovertOneLine(int iWidth, int iSrcBpp, int iDstBpp, unsigned char *pudSrcDatas, unsigned char *pudDstDatas) {
     unsigned int dwRed;
     unsigned int dwGreen;
     unsigned int dwBlue;
     unsigned int dwColor;
 
-    unsigned short *pwDstDatas16bpp = (unsigned short *)output_ptr;
-    unsigned int *pdwDstDatas32bpp = (unsigned int *)output_ptr;
+    unsigned short *pwDstDatas16bpp = (unsigned short *)pudDstDatas;
+    unsigned int *pwDstDatas32bpp = (unsigned int *)pudDstDatas;
 
     int i;
     int pos = 0;
@@ -58,19 +72,10 @@ static int CovertOneLine(int iWidth, int iBpp, unsigned char *input_ptr, unsigne
     return 0; // Placeholder return value
 }
 
-static int Mjepg2Rgb565(unsigned char *input_ptr, unsigned char *output_ptr, unsigned int width, unsigned int height) {
-    return 0; // Placeholder for MJPEG to RGB565 conversion logic
-}
-
-static int Mjpeg2Rgb32(unsigned char *input_ptr, unsigned char *output_ptr, unsigned int width, unsigned int height) {
-    // Implement MJPEG to RGB32 conversion logic here
-    return 0; // Placeholder return value
-}
-
 static int Mjpeg2RgbConvert(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
 	struct jpeg_decompress_struct tDInfo;
 	//struct jpeg_error_mgr tJErr;
-    int iRet;
+    // int iRet;
     int iRowStride;
     unsigned char *aucLineBuffer = NULL;
     unsigned char *pucDest;
@@ -102,7 +107,7 @@ static int Mjpeg2RgbConvert(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut)
     jpeg_mem_src_tj (&tDInfo, ptVideoBufIn->tPixelDatas.aucPixelDatas, ptVideoBufIn->tPixelDatas.iTotalBytes);
     
 
-    iRet = jpeg_read_header(&tDInfo, TRUE);
+    jpeg_read_header(&tDInfo, TRUE);
 
     tDInfo.scale_num = tDInfo.scale_denom = 1;
     

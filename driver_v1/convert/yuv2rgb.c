@@ -1,5 +1,7 @@
 
 #include <convert_manager.h>
+#include <stdlib.h>
+#include "color.h"
 
 int (Yuv2RgbisSupport)(int iPixelFormatIn, int iPixelFormatOut) {
     if (iPixelFormatIn != V4L2_PIX_FMT_YUYV) {
@@ -11,7 +13,7 @@ int (Yuv2RgbisSupport)(int iPixelFormatIn, int iPixelFormatOut) {
     return 1; // Supported
 }
 
-static int Pyuv422toRgb565 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int width, unsigned int height) {
+static int Pyuv422toRgb565 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int image_width, unsigned int image_height) {
     unsigned int i, size;
     unsigned char Y, Y1, U, V;
     unsigned char *buff = input_ptr;
@@ -59,7 +61,8 @@ static int Pyuv422toRgb32 (unsigned char *input_ptr, unsigned char *output_ptr, 
     unsigned int i, size;
     unsigned char Y, Y1, U, V;
     unsigned char *buff = input_ptr;
-    unsigned int *output_pt = output_ptr;
+    unsigned char *output_pt = output_ptr;
+
     unsigned int r, g, b;
     unsigned int color;
 
@@ -100,24 +103,24 @@ static int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut)
 
     if (ptVideoBufOut->iPixelFormat == V4L2_PIX_FMT_RGB565) {
         ptPixelDatasOut->iBpp = 16; // RGB565 has 16 bits per pixel
-        ptPixelDatasOut->iLineByte = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
-        ptPixelDatasOut->iTotalByte = ptPixelDatasOut->iLineByte * ptPixelDatasOut->iHeight;
+        ptPixelDatasOut->iLineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
+        ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
         
-        if (!ptPixelDataOut->aucPixelDatas) {
-            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalByte);
+        if (!ptPixelDatasOut->aucPixelDatas) {
+            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalBytes);
         }
 
-        return Pyuv422toRgb565(ptVideoBufIn->tPixelDatas.pucData, ptVideoBufOut->tPixelDatas.pucData, 
+        return Pyuv422toRgb565(ptVideoBufIn->tPixelDatas.aucPixelDatas, ptVideoBufOut->tPixelDatas.aucPixelDatas, 
                                ptVideoBufIn->tPixelDatas.iWidth, ptVideoBufIn->tPixelDatas.iHeight);
     } else if (ptVideoBufOut->iPixelFormat == V4L2_PIX_FMT_RGB32) {
         ptPixelDatasOut->iBpp = 32; // RGB32 has 32 bits per pixel
-        ptPixelDatasOut->iLineByte = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
-        ptPixelDatasOut->iTotalByte = ptPixelDatasOut->iLineByte * ptPixelDatasOut->iHeight;
+        ptPixelDatasOut->iLineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
+        ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
 
-        if (!ptPixelDataOut->aucPixelDatas) {
-            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalByte);
+        if (!ptPixelDatasOut->aucPixelDatas) {
+            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalBytes);
         }
-        return Pyuv422toRgb32(ptVideoBufIn->tPixelDatas.pucData, ptVideoBufOut->tPixelDatas.pucData, 
+        return Pyuv422toRgb32(ptVideoBufIn->tPixelDatas.aucPixelDatas, ptVideoBufOut->tPixelDatas.aucPixelDatas, 
                               ptVideoBufIn->tPixelDatas.iWidth, ptVideoBufIn->tPixelDatas.iHeight);
     }
 

@@ -4,6 +4,7 @@
 
 #include <video_manager.h>
 #include <config.h>
+#include <linux/videodev2.h>
 
 
 typedef struct VideoConvert {

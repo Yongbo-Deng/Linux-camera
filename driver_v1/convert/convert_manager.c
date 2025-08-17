@@ -1,7 +1,6 @@
 
 #include <config.h>
 #include <convert_manager.h>
-#include <linux/limits.h>
 #include <string.h>
 
 static PT_VideoConvert g_ptVideoConvertHead = NULL;
@@ -14,7 +13,7 @@ int RegisterVideoConvert (PT_VideoConvert ptVideoConvert) {
         ptVideoConvert->ptNext = NULL;
     } else {
         ptTmp = g_ptVideoConvertHead;
-        while (ptTmp->next) {
+        while (ptTmp->ptNext) {
             ptTmp = ptTmp->ptNext;
         }
         ptTmp->ptNext = ptVideoConvert;
@@ -34,7 +33,7 @@ void ShowVideoConvert(void) {
     }
 }
 
-int GetVideoConvert (char* pcName) {
+PT_VideoConvert GetVideoConvert (char* pcName) {
     PT_VideoConvert ptTmp = g_ptVideoConvertHead;
 
     while (ptTmp) {
@@ -63,8 +62,8 @@ PT_VideoConvert GetVideoConvertByFormat(int iPixelFormatIn, int iPixelFormatOut)
 int VideoConvertInit (void) {
     int iError;
 
-    iError = Yvu2RGBInit();
-    iError |= MJPEG2RGBInit();
+    iError = Yuv2RgbInit();
+    iError |= Mjpeg2RgbInit();
     iError |= Rgb2RgbInit();
 
     return 0;

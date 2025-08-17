@@ -1,6 +1,3 @@
-#include "../include/convert_manager.h"
-#include "../include/disp_manager.h"
-#include "../include/video_manager.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>

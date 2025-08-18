@@ -34,6 +34,7 @@ typedef struct VideoBuf {
 } T_VideoBuf, *PT_VideoBuf;
 
 struct VideoOpr {
+    char *name;
     int (*InitDevice) (char *strDevName, PT_VideoDevice ptVideoDevice);
     int (*ExitDevice) (PT_VideoDevice ptVideoDevice);
     int (*GetFrame) (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
@@ -41,6 +42,7 @@ struct VideoOpr {
     int (*PutFrame) (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
     int (*StartDevice) (PT_VideoDevice ptVideoDevice);
     int (*StopDevice) (PT_VideoDevice ptVideoDevice);
+    struct VideoOpr *ptNext;
 };
 
 int VideoDeviceInit(char *strDevName, PT_VideoDevice ptVideoDevice);

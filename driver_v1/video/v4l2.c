@@ -1,15 +1,18 @@
 #include <config.h>
 #include <video_manager.h>
+#include <disp_manager.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <poll.h>
 
 #include <linux/videodev2.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #define NB_BUFFER 4
 
@@ -18,7 +21,7 @@ static int V4l2PutFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
 
 static T_VideoOpr g_tV4l2VideoOpr;
 
-static int g_aiSupportedFromats[] = {
+static int g_SupportedFromats[] = {
     V4L2_PIX_FMT_YUYV,
     V4L2_PIX_FMT_MJPEG,
     V4L2_PIX_FMT_RGB565
@@ -26,8 +29,8 @@ static int g_aiSupportedFromats[] = {
 
 static int isSupportedFormat(int iFormat) {
     int i;
-    for (i = 0; i < sizeof(g_aiSupportedFromats) / sizeof(int); i++) {
-        if (g_aiSupportedFromats[i] == iFormat) {
+    for (i = 0; i < sizeof(g_SupportedFromats) / sizeof(int); i++) {
+        if (g_SupportedFromats[i] == iFormat) {
             return 1; // Format is supported
         }
     }
@@ -60,7 +63,7 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
     int iFd;
     int iError;
     struct v4l2_capability tV4l2Cap;
-    struct v4l2_format tFmtDesc;
+    struct v4l2_fmtdesc tFmtDesc;
     struct v4l2_format tFmt;
     struct v4l2_requestbuffers tReqBufs;
     struct v4l2_buffer tV4l2Buf;
@@ -78,7 +81,7 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
     ptVideoDevice->iFd = iFd;
 
     /* Query capability */
-    memset(&tV4l2Cap, 0, sizeof(cap));
+    memset(&tV4l2Cap, 0, sizeof(tV4l2Cap));
     iError = ioctl(iFd, VIDIOC_QUERYCAP, &tV4l2Cap);
     if (iError) {
         DBG_PRINTF("Failed to query video device capabilities.\n");
@@ -157,11 +160,24 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
                 goto err_exit;
             }
             ptVideoDevice->iVideoBufMaxLen = tV4l2Buf.length;
-            ptVideoDevice->pucVideoBuf[i] = mmap(0,
+            ptVideoDevice->pucVideoBufs[i] = mmap(0,
                             tV4l2Buf.length, PROT_READ, MAP_SHARED, iFd,
                             tV4l2Buf.m.offset);
-            if (ptVideoDevice->ptVideoBufs[i] == MAP_FAILED) {
+            if (ptVideoDevice->pucVideoBufs[i] == MAP_FAILED) {
                 DBG_PRINTF("Unable to map buffer %d.\n", i);
+                goto err_exit;
+            }
+        }
+
+        /* Queue buffers */
+        for (i = 1; i < ptVideoDevice->iVideoBufCnt; i++) {
+            memset(&tV4l2Buf, 0, sizeof(tV4l2Buf));
+            tV4l2Buf.index = i;
+            tV4l2Buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            tV4l2Buf.memory = V4L2_MEMORY_MMAP;
+            iError = ioctl(iFd, VIDIOC_QBUF, &tV4l2Buf);
+            if (iError) {
+                DBG_PRINTF("Unable to queue buffer %d.\n", i);
                 goto err_exit;
             }
         }
@@ -169,22 +185,9 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
         g_tV4l2VideoOpr.GetFrame = V4l2GetFrameForReadWrite;
         g_tV4l2VideoOpr.PutFrame = V4l2PutFrameForReadWrite;
         /* For read/write, we don't need to mmap buffers */
-        ptVideoDevice->ivideoBufCnt = 1;
+        ptVideoDevice->iVideoBufCnt = 1;
         ptVideoDevice->iVideoBufMaxLen = ptVideoDevice->iWidth * ptVideoDevice->iHeight * 4; // Assuming RGB32 format
         ptVideoDevice->pucVideoBufs[0]  = malloc(ptVideoDevice->iVideoBufMaxLen);
-    }
-
-    /* Queue buffers */
-    memset(&tV4l2Buf, 0, sizeof(tV4l2Buf));
-    for (i = 1; i < ptVideoDevice->iVideoBufCnt; i++) {
-        tV4l2Buf.index = i;
-        tV4l2Buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        tV4l2Buf.memory = V4L2_MEMORY_MMAP;
-        iError = ioctl(iFd, VIDIOC_QBUF, &tV4l2Buf);
-        if (iError) {
-            DBG_PRINTF("Unable to queue buffer %d.\n", i);
-            goto err_exit;
-        }
     }
 
     return 0;
@@ -204,6 +207,7 @@ static int V4l2ExitDevice (PT_VideoDevice ptVideoDevice) {
         }
     }
     close(ptVideoDevice->iFd);
+    return 0;
 }
 
 static int V4l2GetFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
@@ -230,16 +234,17 @@ static int V4l2GetFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
         DBG_PRINTF("Unable to dequeue buffer.\n");
         return -1;
     }
-    ptVideoDevice->tVideoBufCurIndex = tV4l2Buf.index;
+    ptVideoDevice->iVideoBufCurIndex = tV4l2Buf.index;
 
     ptVideoBuf->iPixelFormat        = ptVideoDevice->iPixelFormat;
     ptVideoBuf->tPixelDatas.iWidth  = ptVideoDevice->iWidth;
     ptVideoBuf->tPixelDatas.iHeight = ptVideoDevice->iHeight;
     ptVideoBuf->tPixelDatas.iBpp    =  (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_YUYV) ? 16 :  \
                                         (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_MJPEG) ? 0 : \
-                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16;
-    ptVideoBuf->tPixelDatas.iLineByte       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
-    ptVideoBuf->tPixelDatas.iTotalByte      = tV4l2Buf->bytesused;
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16:
+                                        0;
+    ptVideoBuf->tPixelDatas.iLineBytes       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
+    ptVideoBuf->tPixelDatas.iTotalBytes      = tV4l2Buf.bytesused;
     ptVideoBuf->tPixelDatas.aucPixelDatas   = ptVideoDevice->pucVideoBufs[tV4l2Buf.index];
 
     return 0;
@@ -255,7 +260,7 @@ static int V4l2PutFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
 
     /* Prepare buffer for queue */
     memset(&tV4l2Buf, 0, sizeof(tV4l2Buf));
-    tV4l2Buf.index = ptVideoDevice->tVideoBufCurIndex;
+    tV4l2Buf.index = ptVideoDevice->iVideoBufCurIndex;
     tV4l2Buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     tV4l2Buf.memory = V4L2_MEMORY_MMAP;
 
@@ -264,12 +269,14 @@ static int V4l2PutFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
         DBG_PRINTF("Unable to queue buffer.\n");
         return -1;  
     }
+
+    return 0;
 }
 
 static int V4l2GetFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
     int iRet;
 
-    iRet = read(ptVideoDevice->iFd, ptVideoDevice.pucVideoBuf[0], ptVideoDevice->iVideoBufMaxLen);
+    iRet = read(ptVideoDevice->iFd, ptVideoDevice->pucVideoBufs[0], ptVideoDevice->iVideoBufMaxLen);
     if (iRet <= 0) {
         DBG_PRINTF("Failed to read from video device.\n");
         return -1;
@@ -280,14 +287,18 @@ static int V4l2GetFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
     ptVideoBuf->tPixelDatas.iHeight = ptVideoDevice->iHeight;
     ptVideoBuf->tPixelDatas.iBpp    =  (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_YUYV) ? 16 :  \
                                         (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_MJPEG) ? 0 : \
-                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16;
-    ptVideoBuf->tPixelDatas.iLineByte       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
-    ptVideoBuf->tPixelDatas.iTotalByte      = iRet;
+                                        (ptVideoDevice->iPixelFormat == V4L2_PIX_FMT_RGB565) ? 16 : \
+                                        0;
+    ptVideoBuf->tPixelDatas.iLineBytes       = ptVideoDevice->iWidth * ptVideoBuf->tPixelDatas.iBpp / 8; 
+    ptVideoBuf->tPixelDatas.iTotalBytes      = iRet;
     ptVideoBuf->tPixelDatas.aucPixelDatas   = ptVideoDevice->pucVideoBufs[0];
 
+    return 0;
 }
 
-static int V4l2PutFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf);
+static int V4l2PutFrameForReadWrite (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
+    return 0;
+}
 
 static int V4l2StartDevice (PT_VideoDevice ptVideoDevice) {
     int iType = V4L2_BUF_TYPE_VIDEO_CAPTURE;

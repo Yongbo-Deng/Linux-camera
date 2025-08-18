@@ -123,7 +123,7 @@ int main (int argc, char *argv[]) {
                 tZoomBuf.tPixelDatas.aucPixelDatas = malloc(tZoomBuf.tPixelDatas.iTotalBytes);
             }
 
-            PicZoom(&tVideoBuf.tPixelDatas, tZoomBuf.tPixelDatas);
+            PicZoom(&tVideoBuf.tPixelDatas, &tZoomBuf.tPixelDatas);
             ptVideoBufCur = &tZoomBuf;
         } 
 
@@ -131,7 +131,7 @@ int main (int argc, char *argv[]) {
         iTopLeftX = (iLcdWidth - ptVideoBufCur->tPixelDatas.iWidth) / 2;
         iTopLeftY = (iLcdHeight - ptVideoBufCur->tPixelDatas.iHeight) / 2;
 
-        PicMerge(&tConvertBuf.tPixelDatas, &tZoomBuf.tPixelDatas, iLcdWidth, iLcdHeight, iLcdBpp);
+        PicMerge(iTopLeftX, iTopLeftY, &tConvertBuf.tPixelDatas, &tZoomBuf.tPixelDatas);
 
         FlushPixelDatasToDev(&tFrameBuf.tPixelDatas);
 

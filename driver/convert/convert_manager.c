@@ -51,6 +51,7 @@ PT_VideoConvert GetVideoConvertByFormat(int iPixelFormatIn, int iPixelFormatOut)
 
     while (ptTmp) {
         if (ptTmp->isSupport(iPixelFormatIn, iPixelFormatOut)) {
+            printf("Found convert: %s\n", ptTmp->name);
             return ptTmp; // Found a supported video convert operation
         }
         ptTmp = ptTmp->ptNext;

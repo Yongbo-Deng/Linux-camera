@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include "color.h"
 
-int (Yuv2RgbisSupport)(int iPixelFormatIn, int iPixelFormatOut) {
+int Yuv2RgbisSupport (int iPixelFormatIn, int iPixelFormatOut) {
     if (iPixelFormatIn != V4L2_PIX_FMT_YUYV) {
         return 0; // Not supported
     }
@@ -13,7 +13,7 @@ int (Yuv2RgbisSupport)(int iPixelFormatIn, int iPixelFormatOut) {
     return 1; // Supported
 }
 
-static int Pyuv422toRgb565 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int image_width, unsigned int image_height) {
+static unsigned int Pyuv422toRgb565 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int image_width, unsigned int image_height) {
     unsigned int i, size;
     unsigned char Y, Y1, U, V;
     unsigned char *buff = input_ptr;
@@ -57,11 +57,11 @@ static int Pyuv422toRgb565 (unsigned char *input_ptr, unsigned char *output_ptr,
     return 0;
 }
 
-static int Pyuv422toRgb32 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int width, unsigned int height) {
+static unsigned int Pyuv422toRgb32 (unsigned char *input_ptr, unsigned char *output_ptr, unsigned int width, unsigned int height) {
     unsigned int i, size;
     unsigned char Y, Y1, U, V;
     unsigned char *buff = input_ptr;
-    unsigned char *output_pt = output_ptr;
+    unsigned int *output_pt = (unsigned int *)output_ptr;
 
     unsigned int r, g, b;
     unsigned int color;
@@ -69,36 +69,36 @@ static int Pyuv422toRgb32 (unsigned char *input_ptr, unsigned char *output_ptr, 
     size = width * height / 2; // YUV422, 2 pixels per 4 bytes
 
     for (i = size; i > 0; i--) {
-        Y = buff[0];
-        U = buff[1];
-        Y1 = buff[2];
-        V = buff[3];
-        buff += 4;
+		Y = buff[0] ;
+		U = buff[1] ;
+		Y1 = buff[2];
+		V = buff[3];
+		buff += 4;
 
-        r = R_FROMYV(Y, V);
-        g = G_FROMYUV(Y, U, V);
-        b = B_FROMYU(Y, U);
-        
-        // Pack RGB into 32-bit format
-        color = (r << 16) | (g << 8) | b;
-        *output_pt++ = color;
+        r = R_FROMYV(Y,V);
+		g = G_FROMYUV(Y,U,V); //b
+		b = B_FROMYU(Y,U); //v
 
-        // Process second pixel
-        r = R_FROMYV(Y1, V);
-        g = G_FROMYUV(Y1, U, V);
-        b = B_FROMYU(Y1, U);
-        color = (r << 16) | (g << 8) | b;
+		/* rgb888 */
+		color = (r << 16) | (g << 8) | b;
         *output_pt++ = color;
-    }
-    
+			
+		r = R_FROMYV(Y1,V);
+		g = G_FROMYUV(Y1,U,V); //b
+		b = B_FROMYU(Y1,U); //v
+		color = (r << 16) | (g << 8) | b;
+        *output_pt++ = color;
+	}
+
     return 0;
 }
 
-static int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
+
+static int Yuv2RgbConvert (PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut) {
     PT_PixelDatas ptPixelDatasIn = &ptVideoBufIn->tPixelDatas;
     PT_PixelDatas ptPixelDatasOut = &ptVideoBufOut->tPixelDatas;
 
-    ptPixelDatasOut->iWidth = ptPixelDatasIn->iWidth;
+    ptPixelDatasOut->iWidth  = ptPixelDatasIn->iWidth;
     ptPixelDatasOut->iHeight = ptPixelDatasIn->iHeight;
 
     if (ptVideoBufOut->iPixelFormat == V4L2_PIX_FMT_RGB565) {
@@ -107,23 +107,27 @@ static int (Yuv2RgbConvert)(PT_VideoBuf ptVideoBufIn, PT_VideoBuf ptVideoBufOut)
         ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
         
         if (!ptPixelDatasOut->aucPixelDatas) {
-            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalBytes);
+            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDatasOut->iTotalBytes);
         }
 
-        return Pyuv422toRgb565(ptVideoBufIn->tPixelDatas.aucPixelDatas, ptVideoBufOut->tPixelDatas.aucPixelDatas, 
-                               ptVideoBufIn->tPixelDatas.iWidth, ptVideoBufIn->tPixelDatas.iHeight);
+        Pyuv422toRgb565(ptPixelDatasIn->aucPixelDatas, ptPixelDatasOut->aucPixelDatas, 
+                               ptPixelDatasOut->iWidth, ptPixelDatasOut->iHeight);
+        return 0;
+
     } else if (ptVideoBufOut->iPixelFormat == V4L2_PIX_FMT_RGB32) {
-        ptPixelDatasOut->iBpp = 32; // RGB32 has 32 bits per pixel
-        ptPixelDatasOut->iLineBytes = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
+        ptPixelDatasOut->iBpp = 32;
+        ptPixelDatasOut->iLineBytes  = ptPixelDatasOut->iWidth * ptPixelDatasOut->iBpp / 8;
         ptPixelDatasOut->iTotalBytes = ptPixelDatasOut->iLineBytes * ptPixelDatasOut->iHeight;
 
-        if (!ptPixelDatasOut->aucPixelDatas) {
-            ptPixelDatasOut = malloc(ptPixelDatasOut->iTotalBytes);
+        if (!ptPixelDatasOut->aucPixelDatas)
+        {
+            ptPixelDatasOut->aucPixelDatas = malloc(ptPixelDatasOut->iTotalBytes);
         }
-        return Pyuv422toRgb32(ptVideoBufIn->tPixelDatas.aucPixelDatas, ptVideoBufOut->tPixelDatas.aucPixelDatas, 
-                              ptVideoBufIn->tPixelDatas.iWidth, ptVideoBufIn->tPixelDatas.iHeight);
+        
+        Pyuv422toRgb32(ptPixelDatasIn->aucPixelDatas, ptPixelDatasOut->aucPixelDatas, ptPixelDatasOut->iWidth, ptPixelDatasOut->iHeight);
+        return 0;
     }
-
+    
     return -1; // Unsupported output format
 }
 
@@ -136,6 +140,7 @@ static int (Yuv2RgbConvertExit)(PT_VideoBuf ptVideoBufOut) {
 }
 
 static T_VideoConvert g_tYuv2RgbConvert = {
+    .name = "yuv2rgb",
     .isSupport = Yuv2RgbisSupport,
     .Convert = Yuv2RgbConvert,
     .ConvertExit = Yuv2RgbConvertExit

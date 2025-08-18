@@ -8,7 +8,6 @@
 #include <sys/mman.h>
 #include <poll.h>
 
-#include <linux/videodev2.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -64,7 +63,7 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
     int iError;
     struct v4l2_capability tV4l2Cap;
     struct v4l2_fmtdesc tFmtDesc;
-    struct v4l2_format tFmt;
+    struct v4l2_format tV4l2Fmt;
     struct v4l2_requestbuffers tReqBufs;
     struct v4l2_buffer tV4l2Buf;
 
@@ -81,14 +80,16 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
     ptVideoDevice->iFd = iFd;
 
     /* Query capability */
-    memset(&tV4l2Cap, 0, sizeof(tV4l2Cap));
+    iError = ioctl(iFd, VIDIOC_QUERYCAP, &tV4l2Cap);
+    memset(&tV4l2Cap, 0, sizeof(struct v4l2_capability));
     iError = ioctl(iFd, VIDIOC_QUERYCAP, &tV4l2Cap);
     if (iError) {
         DBG_PRINTF("Failed to query video device capabilities.\n");
         goto err_exit;
     }
-    if (tV4l2Cap.capabilities & V4L2_CAP_VIDEO_CAPTURE) {
-        DBG_PRINTF("Device %s support video capture.\n", strDevName);
+    if (!(tV4l2Cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+        DBG_PRINTF("Device %s does not support video capture.\n", strDevName);
+        goto err_exit;
     } 
     if (tV4l2Cap.capabilities & V4L2_CAP_STREAMING) {
         DBG_PRINTF("Device %s support streaming.\n", strDevName);
@@ -108,31 +109,33 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
         }
         tFmtDesc.index++;
     }
-    if (ptVideoDevice->iPixelFormat == 0) {
+    if (!ptVideoDevice->iPixelFormat) {
         DBG_PRINTF("No supported pixel format found.\n");
         goto err_exit;
     }
 
     /* Set format */
     GetDispResolution(&iLcdWidth, &iLcdHeight, &iLcdBpp);
+    memset(&tV4l2Fmt, 0, sizeof(struct v4l2_format));
+    tV4l2Fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    tV4l2Fmt.fmt.pix.pixelformat = ptVideoDevice->iPixelFormat;
+    tV4l2Fmt.fmt.pix.width       = iLcdWidth;
+    tV4l2Fmt.fmt.pix.height      = iLcdHeight;
+    tV4l2Fmt.fmt.pix.field       = V4L2_FIELD_ANY;
+    DBG_PRINTF("Disp format: %d, %d, %d\n", 
+           tV4l2Fmt.fmt.pix.width, tV4l2Fmt.fmt.pix.height, tV4l2Fmt.fmt.pix.pixelformat);
 
-    memset(&tFmt, 0, sizeof(tFmt));
-    tFmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    tFmt.fmt.pix.width = ptVideoDevice->iWidth;
-    tFmt.fmt.pix.height = ptVideoDevice->iHeight;
-    tFmt.fmt.pix.pixelformat = ptVideoDevice->iPixelFormat;
-    tFmt.fmt.pix.field = V4L2_FIELD_ANY; 
 
     /* If the driver can't support some parameters such as resolution, 
      * it automatically adjust them and send to application
      */
-    iError = ioctl(iFd, VIDIOC_S_FMT, &tFmt);
+    iError = ioctl(iFd, VIDIOC_S_FMT, &tV4l2Fmt);
     if (iError) {
         DBG_PRINTF("Failed to set video format.\n");
         goto err_exit;
     }
-    ptVideoDevice->iWidth = tFmt.fmt.pix.width;
-    ptVideoDevice->iHeight = tFmt.fmt.pix.height;
+    ptVideoDevice->iWidth = tV4l2Fmt.fmt.pix.width;
+    ptVideoDevice->iHeight = tV4l2Fmt.fmt.pix.height;
 
     /* Request buffer */
     memset(&tReqBufs, 0, sizeof(tReqBufs));
@@ -190,6 +193,7 @@ static int V4l2InitDevice (char *strDevName, PT_VideoDevice ptVideoDevice) {
         ptVideoDevice->pucVideoBufs[0]  = malloc(ptVideoDevice->iVideoBufMaxLen);
     }
 
+    ptVideoDevice->ptOpr = &g_tV4l2VideoOpr;
     return 0;
 
 err_exit:
@@ -250,9 +254,6 @@ static int V4l2GetFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf p
     return 0;
 }
 
-static int V4l2GetFormat (PT_VideoDevice ptVideoDevice) {
-    return ptVideoDevice->iPixelFormat;
-}
 
 static int V4l2PutFrameForStreaming (PT_VideoDevice ptVideoDevice, PT_VideoBuf ptVideoBuf) {
     struct v4l2_buffer tV4l2Buf;
@@ -326,6 +327,14 @@ static int V4l2StopDevice (PT_VideoDevice ptVideoDevice) {
     return 0;
 }
 
+static int V4l2GetFormat (PT_VideoDevice ptVideoDevice) {
+    if (!ptVideoDevice->iPixelFormat) {
+        printf("Device not initialized yet.\n");
+        return -1;
+    }
+    return ptVideoDevice->iPixelFormat;
+}
+
 /* Create a VideoOpr structure. */
 static T_VideoOpr g_tV4l2VideoOpr = {
     .name           = "v4l2",
@@ -340,16 +349,8 @@ static T_VideoOpr g_tV4l2VideoOpr = {
 
 /* Register this structure. */
 int V4l2Init (void) {
-    int iError;
-
-    iError = RegisterVideoOpr(&g_tV4l2VideoOpr);
-    if (iError) {
-        printf("Register V4L2 video operation failed.\n");
-        return -1;
-    }
-
-    printf("V4L2 video operation registered successfully.\n");
-    return 0;
+    printf("register v4l2VideoOpr\n");
+    return RegisterVideoOpr(&g_tV4l2VideoOpr);
 }
 
 

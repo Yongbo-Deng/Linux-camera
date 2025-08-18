@@ -75,6 +75,7 @@ static int Rgb2RgbConvertExit(PT_VideoBuf ptVideoBufOut) {
 }
 
 static T_VideoConvert g_tRgb2RgbConvert = {
+    .name = "rgb2rgb",
     .isSupport = isSupportRgb2Rgb,
     .Convert = Rgb2RgbConvert,
     .ConvertExit = Rgb2RgbConvertExit

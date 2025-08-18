@@ -63,7 +63,7 @@ int VideoDeviceInit(char *strDevName, PT_VideoDevice ptVideoDevice) {
 int VideoInit(void) {
     int iError;
 
-    iError = V4l2Init();
+	iError = V4l2Init();
 
     return iError;
 }
